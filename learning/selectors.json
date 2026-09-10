@@ -1,0 +1,8 @@
+{
+  "diagnostic_nodes": "div[id], div[class]:has(img)",
+  "search_card": "[id^=\"waterfall_item_\"]",
+  "search_id_attribute": "id",
+  "comment_user": "a[href*=\"/user/\"]",
+  "comment_text": "[data-e2e=\"comment-content\"], .FduGc_lz > .Sh1Da424",
+  "comment_end_texts": ["没有更多评论了", "暂无更多评论", "没有更多了", "暂时没有更多了", "暂时没有评论", "暂时没有更多评论"]
+}

@@ -1,0 +1,7 @@
+fastapi==0.110.2
+uvicorn==0.29.0
+httpx==0.28.1
+playwright==1.62.0
+pydantic==2.13.5
+pytest==9.1.1
+websockets==17.1

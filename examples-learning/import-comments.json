@@ -1,0 +1,4 @@
+[
+  {"aweme_id":"example-video-1","comment_id":"example-comment-1","user_id":"example-user-1","nickname":"示例导入用户","content":"这是一条虚构的导入示例"},
+  {"aweme_id":"example-video-1","comment_id":"example-comment-2","user_id":"example-user-1","nickname":"示例导入用户","content":"同一用户的第二条示例评论"}
+]
