@@ -1,5 +1,6 @@
 """Read only visible video information. No private APIs or inferred hidden counts."""
 import re
+import json
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
@@ -57,6 +58,49 @@ def search_card_fields(lines):
         result['author'] = lines[author_index].strip()
         if author_index+1<len(lines): result.update(published_fields(lines[author_index+1].strip()))
     return result
+
+
+def search_text_fields(text):
+    """Only decode the known multiline card; never numbers in an ordinary caption."""
+    lines=[line.strip() for line in text.strip().splitlines() if line.strip()]
+    if lines and lines[0]=='合集':lines=lines[1:]
+    if len(lines)<3 or duration_seconds(lines[0]) is None or parse_count(lines[1]) is None:
+        return {}
+    fields=search_card_fields(lines)
+    end=len(lines)
+    if fields.get('author'):
+        end=max(i for i,line in enumerate(lines) if line==fields['author'])
+    caption='\n'.join(lines[2:end]).strip()
+    if not caption:return {}
+    return dict(fields,title=caption[:1000],search_card_text=text,content_type='video')
+
+
+def repair_search_snapshots(db):
+    """Idempotently decode saved text, retaining original evidence and existing metrics."""
+    timestamps={}
+    for row in db.execute('''SELECT e.rowid AS rid,e.entity_id,e.payload,t.created_at FROM task_entities e
+        JOIN tasks t ON t.id=e.task_id WHERE e.kind='videos' AND e.source='live' ORDER BY t.created_at''').fetchall():
+        item=json.loads(row['payload']);raw=item.get('title','')
+        timestamps[(row['entity_id'],raw)]=row['created_at']
+        fixed=_repair_snapshot(item,row['created_at'])
+        if fixed:db.execute('UPDATE task_entities SET payload=? WHERE rowid=?',(json.dumps(fixed,ensure_ascii=False),row['rid']))
+    for row in db.execute("SELECT rowid AS rid,id,payload FROM entities WHERE kind='videos' AND source='live'").fetchall():
+        item=json.loads(row['payload'])
+        fixed=_repair_snapshot(item,timestamps.get((row['id'],item.get('title',''))))
+        if fixed:db.execute('UPDATE entities SET payload=? WHERE rowid=?',(json.dumps(fixed,ensure_ascii=False),row['rid']))
+
+
+def _repair_snapshot(item,task_time):
+    if item.get('search_card_text'):return None
+    fields=search_text_fields(item.get('title',''))
+    if not fields:return None
+    for metric in fields['metrics'].values():
+        metric.update(observed_at=task_time,source='saved_search_card',time_basis='task_created_at' if task_time else 'unknown')
+    fixed={**fields,**item,'title':fields['title'],'search_card_text':fields['search_card_text']}
+    fixed['metrics']={**fields['metrics'],**item.get('metrics',{})}
+    for key in ('author','duration','duration_seconds','published_text','published_at','published_precision'):
+        if not fixed.get(key) and fields.get(key) is not None:fixed[key]=fields[key]
+    return fixed
 
 
 DETAIL_JS = r'''root => {

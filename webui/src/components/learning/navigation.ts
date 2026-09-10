@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { viewNames } from './library'
 
-export const pageNames = { overview: '工作台概览', keyword: '新建搜索', ...viewNames, 'task-logs': '任务日志', 'account-actions': '关注与私信' }
+export const pageNames = { overview: '工作台概览', keyword: '新建搜索', leads: '需求用户', ...viewNames, 'task-logs': '任务日志', 'account-actions': '关注与私信' }
 type Page = keyof typeof pageNames
 function readRoute() {
   const [path, query = ''] = window.location.hash.slice(1).split('?')

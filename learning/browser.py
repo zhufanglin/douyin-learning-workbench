@@ -116,8 +116,10 @@ def read_search(page, limit=100, allow_empty=False):
     for link in ([] if cards else links):
         video_id = current_video_id(link['url'])
         if video_id and video_id not in found:
+            from .video_metadata import search_text_fields
             found[video_id] = dict(id=video_id, title=link['title'].strip()[:1000] or '页面未展示标题',
                                    url=f'https://www.douyin.com/video/{video_id}', author='')
+            found[video_id].update(search_text_fields(link['title']))
     for card in cards:
         title = card['title'].strip()
         if not title:
@@ -527,10 +529,22 @@ class BrowserReader:
                 store.finish(task['id'], data, 'running', '正在切换到视频分类，随后读取搜索结果…')
                 if not ensure_video_search(self.page, lambda: store.get_task(task['id'])['status'] != 'running'):
                     return
-                collect_search(self.page, data, limit,
-                    lambda: store.finish(task['id'], data, 'running', data.get('search_note', '正在读取视频分类…')),
-                    lambda: store.get_task(task['id'])['status'] != 'running')
-                store.finish(task['id'], data, 'success', f"已收集 {len(data['videos'])} 个视频，请点击列表中的视频查看评论。")
+                search_status='success'
+                try:
+                    collect_search(self.page, data, limit,
+                        lambda: store.finish(task['id'], data, 'running', data.get('search_note', '正在读取视频分类…')),
+                        lambda: store.get_task(task['id'])['status'] != 'running')
+                except PagePaused as exc:
+                    if exc.status not in ('search_exhausted','search_stalled') or not data['videos']:raise
+                    search_status='partial'
+                    store.log(task['id'],'info',str(exc))
+                if previous['task'].get('search_mode')=='videos':
+                    store.finish(task['id'],data,search_status,f"已收集 {len(data['videos'])} 个视频。请选择视频读取评论。"+('搜索未达到目标，详见日志。' if search_status=='partial' else ''))
+                    return
+                from .search_comments import collect_search_comments
+                collect_search_comments(self.page,store,task,data)
+                if any(v.get('metadata_status')=='unsupported_type' or v.get('comment_status')=='partial' for v in data['videos']):search_status='partial'
+                store.finish(task['id'], data, search_status, f"已收集 {len(data['videos'])} 个结果，自动保存 {len(data['comments'])} 条评论、{len(data['users'])} 位去重用户。点击视频查看评论或继续下一批。"+('搜索不足目标或包含已跳过的图文，详见日志。' if search_status=='partial' else ''))
                 return
             ending = '页面明确提示主评论已到底。' if data['pagination']['exhausted'] else '本批读取完成，可点击下一批 100 条。'
             images = data['pagination'].get('image_placeholder_count', 0)

@@ -23,7 +23,9 @@ class SearchRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     keyword: str = Field(min_length=1, max_length=80)
     source: Literal['demo', 'live'] = 'demo'
+    search_mode: Literal['videos','comments'] = 'comments'
     limit: int = Field(default=100, ge=1, le=100)
+    business_profile_id: str | None = Field(default=None,max_length=64)
 
     @field_validator('keyword')
     @classmethod
@@ -146,6 +148,10 @@ def create_app(db_path=None):
             app.state.reader.close()
 
     app = FastAPI(title='抖音学习工作台', version='0.1.0', lifespan=lifespan)
+    from .business import register
+    register(app,store)
+    from .analysis import register as register_analysis
+    register_analysis(app,store)
     app.state.store = store
     app.state.account_ledger = account_ledger
     app.state.downloads = downloads
@@ -267,9 +273,11 @@ def create_app(db_path=None):
 
     @app.post('/api/learning/tasks')
     def create_task(request: SearchRequest):
-        task = store.create_task(request.keyword, request.source)
+        try:task = store.create_task(request.keyword, request.source, request.business_profile_id, request.search_mode)
+        except ValueError as exc:raise HTTPException(400,str(exc))
         if request.source == 'demo':
             result = demo_search(request.keyword)
+            if request.search_mode=='videos':result.update(comments=[],users=[])
             return store.finish(task['id'], result, 'simulated',
                                 f"模拟完成：{len(result['videos'])} 个视频，{len(result['comments'])} 条评论；未访问抖音。")
         # Loaded only for an explicitly selected real read. No original crawler imports.
@@ -292,7 +300,9 @@ def create_app(db_path=None):
         previous = store.get_task(task_id)
         if previous['source'] != 'live' or app.state.reader is None:
             raise HTTPException(409, detail='请先打开真实关键词搜索页面。')
-        task = store.create_task(previous['keyword'], 'live')
+        task = store.create_task(previous['keyword'], 'live', search_mode=previous.get('search_mode') or 'comments')
+        with store.connect() as db:
+            db.execute('INSERT INTO task_business(task_id,payload) SELECT ?,payload FROM task_business WHERE task_id=?',(task['id'],task_id))
         app.state.reader.submit(store, task, search_current=True)
         return store.get_task(task['id'])
 
@@ -300,7 +310,8 @@ def create_app(db_path=None):
     def current_search(request: SearchRequest):
         if app.state.reader is None:
             raise HTTPException(409, detail='请先运行一次网页搜索。')
-        task = store.create_task(request.keyword, 'live')
+        try:task = store.create_task(request.keyword, 'live', request.business_profile_id, request.search_mode)
+        except ValueError as exc:raise HTTPException(400,str(exc))
         app.state.reader.submit(store, task, search_current=True, limit=request.limit)
         return store.get_task(task['id'])
 

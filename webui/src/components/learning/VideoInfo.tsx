@@ -2,8 +2,8 @@ import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { timeLabel, profileSafe } from './library'
 
-export type Metric = { value: number; text?: string; approximate?: boolean; observed_at?: string; source?: string }
-export type VideoInformation = { id: string; title?: string; author?: string; author_url?: string; source?: string; url?: string; search_rank?: number; metrics?: Record<string, Metric>; duration?: string; duration_seconds?: number; published_at?: string; published_text?: string; published_precision?: string; metadata_read_at?: string; metadata_status?: string }
+export type Metric = { value: number; text?: string; approximate?: boolean; observed_at?: string; source?: string; time_basis?: string }
+export type VideoInformation = { id: string; title?: string; author?: string; author_url?: string; source?: string; url?: string; search_rank?: number; metrics?: Record<string, Metric>; duration?: string; duration_seconds?: number; published_at?: string; published_text?: string; published_precision?: string; metadata_read_at?: string; metadata_status?: string; comment_task_id?: string }
 export const videoMetrics = [['digg_count','点赞'],['comment_count','评论'],['collect_count','收藏'],['share_count','分享'],['play_count','播放'],['danmaku_count','弹幕']] as const
 const sorts = [['search_rank','搜索顺序'], ...videoMetrics, ['published_at','发布时间'], ['duration_seconds','视频时长'], ['metadata_read_at','信息读取时间'], ['title','标题'], ['author','作者']]
 function value(video: VideoInformation, field: string): number | string | undefined {
@@ -33,7 +33,9 @@ export function useVideoSort<T extends VideoInformation>(videos: T[]) {
   return {ordered:sortVideos(videos,field,direction),controls}
 }
 export function VideoStats({video}: {video:VideoInformation}) {
-  return <span className="video-stats">{videoMetrics.map(([key,label])=>{const m=video.metrics?.[key];return <span key={key} title={m?`${label}：${m.text||m.value}；${m.approximate?'页面约数；':''}采集于 ${timeLabel(m.observed_at)}`:`${label}：页面未提供或尚未读取`}><span>{label}</span> <b>{m&&Number.isFinite(m.value)?(m.approximate?'≈':'')+m.value.toLocaleString('zh-CN'):'—'}</b></span>})}</span>
+  if(video.metadata_status==='unsupported_type') return <span className="video-stats">图文内容 · 不适用视频指标读取</span>
+  if(video.metadata_status==='blocked') return <span className="video-stats">未完成 · 上一批页面超时，搜索信息已保留</span>
+  return <span className="video-stats">{videoMetrics.map(([key,label])=>{const m=video.metrics?.[key];return <span key={key} title={m?`${label}：${m.text||m.value}；${m.approximate?'页面约数；':''}${m.time_basis==='task_created_at'?'原任务时间（历史文字补全）':m.time_basis==='unknown'?'采集时间未知':'采集于'} ${timeLabel(m.observed_at)}`:`${label}：页面未提供或尚未读取`}><span>{label}</span> <b>{m&&Number.isFinite(m.value)?(m.approximate?'≈':'')+m.value.toLocaleString('zh-CN'):'—'}</b></span>})}</span>
 }
 export function VideoInfo({video}: {video:VideoInformation}) {
   return <section className="video-information" aria-label="视频信息">
@@ -41,7 +43,7 @@ export function VideoInfo({video}: {video:VideoInformation}) {
     <dl><dt>作者</dt><dd>{profileSafe(video.author_url)?<a href={video.author_url} target="_blank" rel="noreferrer">{video.author||'查看作者主页'}</a>:video.author||'未提供'}</dd>
       <dt>发布时间</dt><dd>{video.published_text||timeLabel(video.published_at)}{video.published_precision==='day'?'（日期精度）':''}</dd>
       <dt>时长</dt><dd>{video.duration||(video.duration_seconds!==undefined?`${video.duration_seconds} 秒`:'未提供')}</dd>
-      <dt>视频编号</dt><dd>{video.id}</dd><dt>信息读取</dt><dd>{video.metadata_status==='pending'?'等待读取':timeLabel(video.metadata_read_at)}</dd>
+      <dt>视频编号</dt><dd>{video.id}</dd><dt>信息读取</dt><dd>{video.metadata_status==='unsupported_type'?'已跳过：打开后为图文页':video.metadata_status==='pending'?'等待读取':timeLabel(video.metadata_read_at)}</dd>
     </dl><p>— 表示未提供或尚未读取；≈ 为页面约数。指标是采集时的快照，播放量等可能不公开。</p>
   </section>
 }

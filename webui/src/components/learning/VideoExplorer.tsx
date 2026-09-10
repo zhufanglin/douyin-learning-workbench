@@ -1,3 +1,4 @@
+import {taskLabel} from './taskLabel'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -30,7 +31,7 @@ export function VideoExplorer({ taskId, videos, searching, commentTaskId, initia
     catch { return {} }
   })
   const [picked, setPicked] = useState<Video | undefined>(() => videos.find(v => v.id === initialVideoId) || (commentTaskId && videos.length === 1 ? videos[0] : videos.find(v => v.id === localStorage.getItem(pickedKey))))
-  const [detailId, setDetailId] = useState(() => commentTaskId || (picked ? cache[picked.id] || '' : ''))
+  const [detailId, setDetailId] = useState(() => commentTaskId || (picked ? picked.comment_task_id || cache[picked.id] || '' : ''))
   useEffect(() => { localStorage.setItem(cacheKey, JSON.stringify(cache)) }, [cache, cacheKey])
   useEffect(() => { if (picked) localStorage.setItem(pickedKey, picked.id) }, [picked, pickedKey])
   const [busy, setBusy] = useState(false)
@@ -68,6 +69,7 @@ export function VideoExplorer({ taskId, videos, searching, commentTaskId, initia
   async function choose(video: Video, fresh = false) {
     setPicked(video); setError(''); setPage(0)
     if (commentTaskId) { setDetailId(commentTaskId); return }
+    if(video.comment_task_id && !fresh) { setDetailId(video.comment_task_id); return }
     if (cache[video.id] && !fresh) { setDetailId(cache[video.id]); return }
     if (!fresh) { setDetailId(''); return }
     setBusy(true); setDetailId('')
@@ -105,7 +107,7 @@ export function VideoExplorer({ taskId, videos, searching, commentTaskId, initia
           <VideoInfo video={detail.data?.videos?.find(v=>v.id===picked.id)||videos.find(v=>v.id===picked.id)||picked}/>
           {source==='live'&&<MetadataReadButton taskId={taskId} videoIds={[picked.id]} disabled={searching||reading}/>}
           {source === 'live' && /^\d+$/.test(picked.id) && <a href={'https://www.douyin.com/video/' + picked.id} target="_blank" rel="noreferrer" className="text-sm text-cyan-700 underline">打开抖音原视频</a>}
-          {detail.data && <p className="text-xs text-cyber-text-secondary mt-2">评论来源：{detail.data.task.keyword || '已保存任务'} · 读取任务时间：{timeLabel(detail.data.task.created_at)}{detailId !== taskId ? '（此视频的独立读取记录）' : ''}</p>}
+          {detail.data && <p className="text-xs text-cyber-text-secondary mt-2">评论来源：{taskLabel({...detail.data.task,videos:detail.data.videos})} · 读取任务时间：{timeLabel(detail.data.task.created_at)}{detailId !== taskId ? '（此视频的独立读取记录）' : ''}</p>}
           {(error || detail.isError) && <p role="alert" className="text-red-600 text-sm mt-2">{error || '读取结果失败'}</p>}
           <p role="status" className="text-xs text-cyber-text-secondary my-3">{busy ? '正在提交读取请求…' : detail.data?.task.note || (detailId || catalog.isLoading ? '正在加载已保存记录…' : '此视频尚无已保存评论。')}</p>
           {!detailId && catalog.isError && <p role="alert" className="text-sm text-red-600">无法核对已保存评论，请先重试。<Button size="sm" variant="outline" onClick={() => void catalog.refetch()}>核对已有记录</Button></p>}

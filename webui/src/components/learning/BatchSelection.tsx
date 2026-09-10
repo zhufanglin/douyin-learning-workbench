@@ -7,12 +7,13 @@ import { MetadataReadButton } from './VideoInfo'
 
 export type SelectableRow = { target: DeleteTarget; label: string; disabled?: boolean }
 const keyOf = (target: DeleteTarget) => JSON.stringify([target.kind,target.source,target.id])
-export function useBatchSelection(rows: SelectableRow[], scope: string) {
+export function useBatchSelection(rows: SelectableRow[], scope: string, active?: boolean) {
   const [selection, setSelection] = useState<{ scope: string; keys: string[]; active: boolean }>({ scope, keys: [], active: false })
   const available = [...new Map(rows.filter(r => !r.disabled).map(r => [keyOf(r.target), r])).values()]
   const signature = JSON.stringify(available.map(r => keyOf(r.target)))
   const keys = selection.scope === scope ? selection.keys : []
-  const selecting = selection.scope === scope && selection.active
+  const selecting = active === undefined ? selection.scope === scope && selection.active : active
+  useEffect(() => { if(active === false) setSelection({scope,keys:[],active:false}) }, [active,scope])
   const chosen = available.filter(r => keys.includes(keyOf(r.target)))
   useEffect(() => {
     const valid: string[] = JSON.parse(signature)
@@ -40,7 +41,7 @@ export function RowSelection({ selection, row }: { selection: BatchSelection; ro
   if (!selection.selecting) return null
   return <input className="record-checkbox" type="checkbox" aria-label={'选择' + row.label} title={row.disabled ? '运行中，请先暂停任务' : '选择本地记录'} disabled={row.disabled} checked={selection.has(row.target)} onClick={e => e.stopPropagation()} onChange={() => selection.toggle(row.target)} />
 }
-export function BatchToolbar({ selection, scopeLabel = '当前页', exportTaskId = '' }: { selection: BatchSelection; scopeLabel?: string; exportTaskId?: string }) {
+export function BatchToolbar({ selection, scopeLabel = '当前页', exportTaskId = '', metadataTaskId = exportTaskId, externalControl = false }: { selection: BatchSelection; scopeLabel?: string; exportTaskId?: string; metadataTaskId?: string; externalControl?: boolean }) {
   const checkbox = useRef<HTMLInputElement>(null)
   const lock = useRef(false)
   const attempt = useRef({ keys: '', id: '' })
@@ -72,12 +73,13 @@ export function BatchToolbar({ selection, scopeLabel = '当前页', exportTaskId
     finally { lock.current = false; setBusy('') }
   }
   useEffect(() => { if (checkbox.current) checkbox.current.indeterminate = chosen.length > 0 && chosen.length < available.length }, [chosen.length,available.length,selection.selecting])
+  if(externalControl && !selection.selecting) return null
   return <div className="batch-toolbar" role="group" aria-label={scopeLabel + '批量操作'}>
     {!selection.selecting ? <Button size="sm" variant="outline" disabled={!available.length} onClick={() => { setNotice(''); setError(''); selection.start() }}>选择</Button> : <>
     <label><input ref={checkbox} type="checkbox" checked={available.length > 0 && chosen.length === available.length} disabled={!available.length} onChange={selection.all} />全选{scopeLabel}</label>
     <span role="status">已选 {chosen.length} 条</span>
-    <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => { selection.cancel(); setNotice(''); setError('') }}>取消选择</Button>
-    {!!exportTaskId && !!chosen.length && chosen.every(r=>r.target.kind==='videos'&&r.target.source==='live') && <MetadataReadButton taskId={exportTaskId} videoIds={chosen.map(r=>r.target.id)} disabled={!!busy}/>}
+    {!externalControl && <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => { selection.cancel(); setNotice(''); setError('') }}>取消选择</Button>}
+    {!!metadataTaskId && !!chosen.length && chosen.every(r=>r.target.kind==='videos'&&r.target.source==='live') && <MetadataReadButton taskId={metadataTaskId} videoIds={chosen.map(r=>r.target.id)} disabled={!!busy}/>}
     {!!chosen.length && <div className="batch-actions"><Button size="sm" variant="outline" disabled={!!busy} onClick={() => void perform('csv')}><FileDown size={14} />导出 CSV</Button><Button size="sm" variant="outline" disabled={!!busy} onClick={() => void perform('json')}>导出 JSON</Button>{chosen.every(r => r.target.kind === 'videos') && <Button size="sm" variant="outline" disabled={!!busy || chosen.length > 100} onClick={() => void perform('video')}><Download size={14} />批量下载视频</Button>}<DeleteRecord disabled={!!busy} targets={chosen.map(r => r.target)} itemLabels={chosen.map(r => r.label)} label={`选中的 ${chosen.length} 条记录`} done={selection.clear} /></div>}
     </>}
     {!!busy && <span role="status" className="batch-message"><Loader2 size={14} className="animate-spin" />{busy === 'video' ? '正在创建下载任务…' : '正在生成所选数据文件…'}</span>}

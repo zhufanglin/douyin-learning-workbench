@@ -52,7 +52,7 @@ def test_selected_export_and_download_feedback_without_row_delete(tmp_path):
             expect(page.get_by_text('不可下载 · 页面没有下载入口',exact=True)).to_be_visible()
             page.locator('.library-group summary').first.click()
             page.get_by_role('button',name='选择',exact=True).click()
-            page.get_by_role('checkbox',name='全选本组视频',exact=True).check()
+            page.get_by_role('checkbox',name='全选当前页',exact=True).check()
             evidence=Path(os.environ.get('LEARNING_EVIDENCE_DIR',str(tmp_path))); evidence.mkdir(parents=True,exist_ok=True)
             page.screenshot(path=str(evidence/'batch-actions.png'),animations='disabled')
             page.set_viewport_size(dict(width=390,height=844))

@@ -40,6 +40,8 @@ class Store:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, level TEXT NOT NULL,
                     message TEXT NOT NULL, created_at TEXT NOT NULL);
             ''')
+            if 'search_mode' not in {r['name'] for r in db.execute('PRAGMA table_info(tasks)')}:
+                db.execute('ALTER TABLE tasks ADD COLUMN search_mode TEXT')
             # Migrate earlier local prototype DBs without dropping their saved results.
             columns = {r['name'] for r in db.execute('PRAGMA table_info(task_entities)')}
             if 'payload' not in columns:
@@ -47,6 +49,10 @@ class Store:
             db.execute('''UPDATE task_entities SET payload=(SELECT payload FROM entities e
                 WHERE e.kind=task_entities.kind AND e.source=task_entities.source
                 AND e.id=task_entities.entity_id) WHERE payload IS NULL''')
+            from .video_metadata import repair_search_snapshots
+            repair_search_snapshots(db)
+        from .business import install
+        install(self)
 
     @contextmanager
     def connect(self):
@@ -77,11 +83,15 @@ class Store:
         with self.connect() as db:
             self._log(db, task_id, level, message)
 
-    def create_task(self, keyword, source):
-        task = dict(id=uuid4().hex, keyword=keyword, source=source, status='running',
+    def create_task(self, keyword, source, business_profile_id=None, search_mode=None):
+        if search_mode not in (None,'videos','comments'):raise ValueError('搜索方式无效')
+        task = dict(search_mode=search_mode,id=uuid4().hex, keyword=keyword, source=source, status='running',
                     note='正在执行', created_at=now())
         with self.connect() as db:
-            db.execute('INSERT INTO tasks VALUES(:id,:keyword,:source,:status,:note,:created_at)', task)
+            from .business import snapshot
+            profile=snapshot(db,business_profile_id)
+            db.execute('INSERT INTO tasks(id,keyword,source,status,note,created_at,search_mode) VALUES(:id,:keyword,:source,:status,:note,:created_at,:search_mode)', task)
+            if profile:db.execute('INSERT INTO task_business VALUES(?,?)',(task['id'],json.dumps(profile,ensure_ascii=False)))
             self._log(db, task['id'], 'info', f'创建任务：{keyword}；来源：{source}')
         return task
 
@@ -184,6 +194,8 @@ class Store:
                     result[kind].sort(key=lambda item: item.get('search_rank', 1000000))
                 if kind == 'comments':
                     result[kind].sort(key=lambda item: (bool(item.get('parent_comment_id')), item.get('reply_rank' if item.get('parent_comment_id') else 'comment_rank', 1000000)))
+            profile=db.execute('SELECT payload FROM task_business WHERE task_id=?',(task_id,)).fetchone()
+            result['business_profile']=json.loads(profile['payload']) if profile else None
             paging = db.execute('SELECT payload FROM comment_pagination WHERE task_id=?', (task_id,)).fetchone()
             result['pagination'] = json.loads(paging['payload']) if paging else None
             result['logs'] = [dict(r) for r in db.execute('SELECT * FROM logs WHERE task_id=? ORDER BY id', (task_id,))]

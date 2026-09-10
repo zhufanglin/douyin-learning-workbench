@@ -12,6 +12,9 @@ def catalog(store, keyword='', task_id='', start='', end=''):
             and (not task_id or t['id'] == task_id)
             and (not start or datetime.fromisoformat(t['created_at']) >= datetime.fromisoformat(start))
             and (not end or datetime.fromisoformat(t['created_at']) < datetime.fromisoformat(end))]
+        profiles = {r['task_id']: json.loads(r['payload']) for r in db.execute('SELECT * FROM task_business')}
+        for task in tasks:
+            task['business_profile'] = profiles.get(task['id'])
         by_id = {t['id']: t for t in tasks}
         memberships = defaultdict(list)
         snapshots = {}

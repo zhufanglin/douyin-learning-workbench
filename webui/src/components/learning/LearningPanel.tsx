@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
+import { LeadsPanel } from './LeadsPanel'
 import { LibraryPanel } from './LibraryPanel'
 import { viewNames, type View } from './library'
 import { useWorkbenchRoute, pageNames } from './navigation'
@@ -15,6 +16,7 @@ import { LogList } from './LogList'
 import { SearchFeedback, type SearchResult } from './SearchFeedback'
 import './workbench.css'
 import { BrowserPreview } from './BrowserPreview'
+import { BusinessProfiles } from './BusinessProfiles'
 import { BeginnerGuide } from './BeginnerGuide'
 
 type Source = 'demo' | 'live' | 'import'
@@ -36,6 +38,7 @@ export function LearningPanel() {
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState(() => sessionStorage.getItem('learning-search-keyword') || '露营')
   useEffect(() => { sessionStorage.setItem('learning-search-keyword', keyword) }, [keyword])
+  const [businessProfile,setBusinessProfile]=useState('')
   const [videoUrl, setVideoUrl] = useState('')
   const source = 'live'
   const { route, navigate } = useWorkbenchRoute()
@@ -84,11 +87,12 @@ export function LearningPanel() {
     void startSearch('tasks')
   }
 
+  const [searchMode,setSearchMode]=useState<'videos'|'comments'>('videos')
   async function startSearch(path: 'tasks' | 'browser/search-current') {
     if (requestLock.current || reading || statusUnknown) return
     setSubmitting(true)
     try {
-      await run(() => api<Task>(path, { keyword, source, limit: 100 }), task => {
+      await run(() => api<Task>(path, { keyword, source, limit: 100, search_mode:searchMode, ...(businessProfile?{business_profile_id:businessProfile}:{}) }), task => {
         // Seed the status immediately, before the first polling response arrives.
         queryClient.setQueryData(['learning-task', task.id], { task, videos: [] })
         setSearchTask(task.id)
@@ -130,7 +134,7 @@ export function LearningPanel() {
         <p className="nav-caption">工作空间</p>
         <a href="#overview" className={page === 'overview' ? 'is-active' : ''} aria-current={page === 'overview' ? 'page' : undefined}><LayoutDashboard />工作台概览</a>
         <a href="#keyword" className={page === 'keyword' ? 'is-active' : ''} aria-current={page === 'keyword' ? 'page' : undefined}><Plus />新建搜索</a>
-        <p className="nav-caption">数据与任务</p>
+        <p className="nav-caption">数据与任务</p><a href="#leads" className={page === 'leads' ? 'is-active' : ''} aria-current={page === 'leads' ? 'page' : undefined}><Users />需求用户<ChevronRight /></a>
         {([['tasks', Search], ['videos', Video], ['users', Users], ['comments', Database]] as const).map(([key, Icon]) => <a key={key} href={'#' + key} className={page === key ? 'is-active' : ''} aria-current={page === key ? 'page' : undefined}><Icon />{viewNames[key]}<ChevronRight /></a>)}
         <a href="#account-actions" className={page === 'account-actions' ? 'is-active' : ''} aria-current={page === 'account-actions' ? 'page' : undefined}><MessageSquare />关注与私信</a>
         <a href="#task-logs" className={page === 'task-logs' ? 'is-active' : ''} aria-current={page === 'task-logs' ? 'page' : undefined}><ScrollText />任务日志</a>
@@ -162,11 +166,15 @@ export function LearningPanel() {
       </>}
       {(error || state.isError) && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error || '连接失败，请确认本地服务正在运行。'}</div>}
       {notice && <div role="status" className="rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-900 p-3 text-sm">{notice}</div>}
-      {page === 'keyword' && <section className="search-page space-y-5">
+      {page === 'keyword' && <section className="search-page space-y-5"><BusinessProfiles selected={businessProfile} disabled={readDisabled} onSelect={(id,word)=>{setBusinessProfile(id);if(word)setKeyword(word)}}/>
 
           <Card id="search-workspace" className="search-card bg-cyber-bg-panel"><CardContent className="p-5 space-y-4">
             <form onSubmit={submit} className="search-form">
               <div><label htmlFor="keyword" className="text-sm">关键词</label><Input id="keyword" className="mt-2" value={keyword} disabled={readDisabled} onChange={e => setKeyword(e.target.value)} maxLength={80} required placeholder="例如：露营、咖啡、广州租房" /></div>
+              <fieldset className="space-y-2" disabled={readDisabled}><legend className="text-sm mb-2">搜索方式</legend>
+                <label className="block rounded-lg border p-3 text-sm"><span className="flex items-center gap-2"><input type="radio" name="search-mode" value="videos" checked={searchMode==='videos'} onChange={()=>setSearchMode('videos')}/>先找视频，按需读取评论</span><span className="block text-xs text-cyber-text-secondary mt-1">出结果更快，先选视频再读评论；需要手动选择，未读取的视频可能遗漏需求用户。</span></label>
+                <label className="block rounded-lg border p-3 text-sm"><span className="flex items-center gap-2"><input type="radio" name="search-mode" value="comments" checked={searchMode==='comments'} onChange={()=>setSearchMode('comments')}/>搜索后，逐个读取评论</span><span className="block text-xs text-cyber-text-secondary mt-1">自动读取本次找到的视频评论，耗时较长；视频越多等待越久，遇验证可能暂停。每个视频先读最多100条，不代表全部评论，更多可继续读取。</span></label>
+              </fieldset>
               <Button className="w-full search-submit" disabled={readDisabled || !keyword.trim()} type="submit" aria-busy={submitting || reading}>{submitting || reading ? <Loader2 className="learning-spinner" /> : <Play />}{submitting ? '正在提交…' : reading ? '正在读取…' : '开始网页读取'}</Button>
               <p className="search-hint text-xs leading-5 text-cyber-text-secondary">最多 100 个视频 · 遇登录或验证暂停</p>
             </form>
@@ -183,6 +191,7 @@ export function LearningPanel() {
       </section>}
 
       {page === 'account-actions' && <AccountPanel />}
+      {page === 'leads' && <LeadsPanel />}
       {page in viewNames && <Card id="task-results" className="results-card bg-cyber-bg-panel"><CardContent className="p-5"><LibraryPanel key={view} view={view} selected={selected} select={setSelected} /></CardContent></Card>}
       {page === 'task-logs' && <Card id="task-logs" className="logs-card bg-cyber-bg-panel"><CardContent className="p-5"><h2 className="font-semibold mb-3">最近日志</h2><LogList logs={state.data?.logs || []} runningIds={(state.data?.tasks || []).filter(t => ['running','queued'].includes(t.status)).map(t => t.id)} /></CardContent></Card>}
       </div>{showPreview&&<BrowserPreview close={()=>togglePreview(false)}/>}</div>

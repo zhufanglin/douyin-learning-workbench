@@ -371,3 +371,11 @@
 .video-information p { font-size: 11px; color: rgb(var(--cyber-text-secondary)); margin-top: 8px; }
 .metadata-read { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .metadata-read [role=alert] { font-size: 12px; color: #b45309; }
+
+/* Selection rows use a fixed checkbox column, independent of task-card layout. */
+.workbench-primary .batch-video-record { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:center; gap:10px; padding:9px 10px; margin-top:6px; border:1px solid rgb(var(--cyber-border-subtle)); border-radius:8px; background:rgb(var(--cyber-bg-panel)); }
+.workbench-primary .batch-video-record > .record-checkbox { width:16px; height:16px; margin:0; }
+.workbench-primary .batch-video-record .record-title { display:block; width:100%; font-size:13px; line-height:20px; }
+.workbench-primary .batch-video-record .video-stats { margin-top:4px; font-size:11px; gap:4px 10px; }
+.workbench-primary .search-form > fieldset { grid-column:1 / -1; min-width:0; }
+.workbench-primary .search-form input[type=radio] { width:16px; height:16px; min-height:16px; padding:0; flex-shrink:0; accent-color:#3152d5; }

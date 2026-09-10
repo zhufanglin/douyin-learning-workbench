@@ -98,6 +98,7 @@ def delete_batch(store, records_to_delete, token=None):
             if task_id in deleted_tasks:
                 db.execute('INSERT OR IGNORE INTO deleted_tasks VALUES(?,?)', (task_id,now()))
                 db.execute('DELETE FROM logs WHERE task_id=?', (task_id,))
+                db.execute('DELETE FROM task_business WHERE task_id=?', (task_id,))
                 db.execute('DELETE FROM tasks WHERE id=?', (task_id,))
             else:
                 note = '用户删除了部分本地记录；当前数量以列表为准。旧批次不可继续，如需重新读取请新建任务。'
