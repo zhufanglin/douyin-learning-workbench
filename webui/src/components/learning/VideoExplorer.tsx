@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button'
 import { ReplyThread, CommentContent, type Comment } from './ReplyThread'
 import { UserDrawer } from './UserDrawer'
 import { readLocal, timeLabel, type Catalog, type SavedUser } from './library'
+import { VideoStats, VideoInfo, MetadataReadButton, useVideoSort, type VideoInformation } from './VideoInfo'
 
-type Video = { id: string; title?: string; author?: string; search_rank?: number }
+type Video = VideoInformation
 type Detail = {
   task: { id: string; status: string; note: string; keyword?: string; created_at?: string }
   comments: Comment[]
   users: { id: string; nickname: string; profile_url: string }[]
+  videos?: Video[]
   pagination?: { revision: number; target: number; exhausted: boolean; active_reply?: string; replies?: Record<string, { target: number; exhausted: boolean; end_state?: string; unsupported_count?: number; reader_version?: number; image_placeholder_count?: number }> } | null
 }
 
@@ -35,6 +37,7 @@ export function VideoExplorer({ taskId, videos, searching, commentTaskId, initia
   const [error, setError] = useState('')
   const [page, setPage] = useState(0)
   const [drawer, setDrawer] = useState<SavedUser>()
+  const {ordered,controls}=useVideoSort(videos)
   const catalog = useQuery({ queryKey: ['learning-catalog'], queryFn: () => readLocal<Catalog>('catalog'), staleTime: 3000 })
   useEffect(() => {
     if (!picked || detailId || busy || !catalog.data) return
@@ -87,18 +90,20 @@ export function VideoExplorer({ taskId, videos, searching, commentTaskId, initia
   }
 
   return <div className="space-y-3">
-    {!picked && <p className="text-sm text-cyber-text-secondary">已找到 {videos.length} 个视频 · 按搜索顺序排列。{searching ? '正在收集，请稍候再选视频。' : '点击视频进入评论详情。'}</p>}
+    {!picked && <><p className="text-sm text-cyber-text-secondary">已找到 {videos.length} 个视频。{searching ? '正在收集，请稍候再选视频。' : '点击视频查看信息与评论。'}</p>{controls}{source==='live'&&<MetadataReadButton taskId={taskId} videoIds={videos.map(v=>v.id)} disabled={searching} label="补充本任务视频信息"/>}</>}
     {picked && <Button size="sm" variant="outline" onClick={() => { setPicked(undefined); setDetailId(''); localStorage.removeItem(pickedKey) }}>返回视频列表</Button>}
     <div className="space-y-4">
       {!picked && <div aria-label="视频列表" className="history-video-grid max-h-[620px] overflow-y-auto">
-        {videos.map((video, index) => <button key={video.id} disabled={searching || reading} onClick={() => void choose(video)} className="text-left w-full p-3 border rounded-lg disabled:opacity-60 border-cyber-border-subtle hover:bg-cyber-bg-secondary">
-          <span className="video-row-rank">第 {video.search_rank || index + 1} 条</span><span className="video-row-body"><span className="record-title" title={video.title || video.id}>{video.title || '视频 ' + video.id}</span>{video.author && <span className="record-meta" title={video.author}>{video.author}</span>}</span>
+        {ordered.map((video) => <button key={video.id} disabled={searching || reading} onClick={() => void choose(video)} className="text-left w-full p-3 border rounded-lg disabled:opacity-60 border-cyber-border-subtle hover:bg-cyber-bg-secondary">
+          <span className="video-row-rank">第 {video.search_rank || videos.indexOf(video) + 1} 条</span><span className="video-row-body"><span className="record-title" title={video.title || video.id}>{video.title || '视频 ' + video.id}</span>{video.author && <span className="record-meta" title={video.author}>{video.author}</span>}<VideoStats video={video}/></span>
         </button>)}
         {!videos.length && <p className="text-sm text-cyber-text-secondary py-6">等待视频结果。</p>}
       </div>}
       {picked && <div aria-label="所选视频评论" className="border border-cyber-border-subtle rounded-lg p-4 min-w-0">
         {!picked ? <p className="text-sm text-cyber-text-secondary py-8">先从视频列表选择一个视频。</p> : <>
           <h3 className="font-medium text-sm break-words">{picked.title || picked.id}</h3>
+          <VideoInfo video={detail.data?.videos?.find(v=>v.id===picked.id)||videos.find(v=>v.id===picked.id)||picked}/>
+          {source==='live'&&<MetadataReadButton taskId={taskId} videoIds={[picked.id]} disabled={searching||reading}/>}
           {source === 'live' && /^\d+$/.test(picked.id) && <a href={'https://www.douyin.com/video/' + picked.id} target="_blank" rel="noreferrer" className="text-sm text-cyan-700 underline">打开抖音原视频</a>}
           {detail.data && <p className="text-xs text-cyber-text-secondary mt-2">评论来源：{detail.data.task.keyword || '已保存任务'} · 读取任务时间：{timeLabel(detail.data.task.created_at)}{detailId !== taskId ? '（此视频的独立读取记录）' : ''}</p>}
           {(error || detail.isError) && <p role="alert" className="text-red-600 text-sm mt-2">{error || '读取结果失败'}</p>}

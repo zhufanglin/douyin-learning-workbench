@@ -43,6 +43,7 @@ def save_diagnostic(page, store, task_id):
         info['dom_markers'] = page.locator('[data-e2e]').evaluate_all('''els => [...new Set(els
             .filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden')
             .map(e => e.getAttribute('data-e2e')))].slice(0, 100)''')
+        info['video_information_structure'] = page.locator('[data-e2e="video-detail"] [data-e2e="video-share-container"], [data-e2e="video-detail"] [data-e2e="detail-video-info"]').evaluate_all('''els=>els.filter(e=>e.getClientRects().length).map(e=>e.outerHTML.slice(0,60000))''')
         info['reply_structure'] = page.locator('[data-e2e="comment-list"]').evaluate_all('''els=>els.flatMap(root=>[...root.querySelectorAll('*')]
             .filter(e=>!e.children.length && e.getClientRects().length && /^(展开.*回复|收起(?:回复)?)$/.test(e.innerText?.trim()||''))
             .slice(0,3).map(e=>{let parent=e;for(let i=0;i<6 && parent.parentElement;i++){
@@ -129,11 +130,13 @@ def read_search(page, limit=100, allow_empty=False):
         if not re.fullmatch(r'(?:[0-9]{1,2}:)?[0-9]{1,3}:[0-9]{2}', lines[0].strip()):
             continue
         duration = lines[0].strip()
-        author = next((line for line in lines if line.startswith('@')), '')
+        from .video_metadata import search_card_fields
+        fields = search_card_fields(lines)
+        author = fields.get('author','')
         if len(lines) > 3 and re.fullmatch(r'[0-9:]+', lines[0]) and author:
             title = '\n'.join(lines[2:lines.index(author)])
         found.setdefault(actual_id, dict(id=actual_id, title=title[:1000],
-            url=f'https://www.douyin.com/video/{actual_id}', author=author, content_type='video', duration=duration))
+            url=f'https://www.douyin.com/video/{actual_id}', content_type='video', **fields))
     if not found and not allow_empty:
         raise PagePaused('pending_layout', '未识别到可见视频链接，可能尚未加载、需要登录或页面结构已变化；未判定为零结果成功。')
     return list(found.values())[:limit]
@@ -335,6 +338,57 @@ class BrowserReader:
             self.busy = True
         self.pool.submit(self._run, store, task, current, direct_url, limit, search_current)
 
+    def submit_video_metadata(self, store, parent, videos):
+        with self.lock:
+            if self.busy: raise ValueError('浏览器正被任务使用，请结束后再补充视频信息。')
+            self.busy = True
+        try:
+            task=store.create_task('视频信息：'+parent['keyword'][:60], 'live')
+            self.pool.submit(self._run_video_metadata,store,task,videos)
+            return task
+        except Exception:
+            with self.lock: self.busy=False
+            raise
+
+    def _run_video_metadata(self, store, task, videos):
+        from .video_metadata import read_video_detail
+        data={'videos':[dict(v,metadata_status='pending') for v in videos]}
+        completed=0
+        try:
+            self._ensure_browser()
+            store.finish(task['id'],data,'running',f'准备读取 {len(videos)} 个视频的信息…')
+            for index,video in enumerate(data['videos']):
+                if store.get_task(task['id'])['status']!='running': return
+                self.page.goto(f'https://www.douyin.com/video/{video["id"]}',wait_until='domcontentloaded',timeout=30000)
+                for attempt in range(15):
+                    if store.get_task(task['id'])['status']!='running': return
+                    check_page(self.page)
+                    detail=self.page.locator('[data-e2e="video-detail"]')
+                    if detail.count():
+                        identity=detail.locator('[data-e2e="detail-video-info"]').first.get_attribute('data-e2e-aweme-id') if detail.locator('[data-e2e="detail-video-info"]').count() else None
+                        author_ready=detail.locator('[data-e2e="user-info"] a[href*="/user/"]').count()>0
+                        if (not identity or identity==video['id']) and attempt>=2 and author_ready: break
+                    self.page.wait_for_timeout(1000)
+                info=read_video_detail(self.page,video['id'])
+                if not info['metrics']:
+                    info['metadata_status']='partial'
+                    save_diagnostic(self.page,store,task['id'])
+                # Keep earlier observations with their own timestamps when a field is absent now.
+                info['metrics']={**video.get('metrics',{}),**info['metrics']}
+                data['videos'][index]={**video,**info}
+                completed+=1
+                store.finish(task['id'],data,'running',f'已查看 {completed}/{len(videos)} 个视频，正在补充公开信息…')
+            status='partial' if any(v.get('metadata_status')=='partial' for v in data['videos']) else 'success'
+            store.finish(task['id'],data,status,f'已查看 {completed}/{len(videos)} 个视频；未展示或未识别的指标保留“未提供”，不是完整平台统计。')
+        except PagePaused as exc:
+            store.finish(task['id'],data,exc.status,f'已查看 {completed}/{len(videos)} 个视频。'+str(exc))
+        except BrowserTimeout:
+            store.finish(task['id'],data,'failed',f'已查看 {completed}/{len(videos)} 个视频；页面超时，已停止。')
+        except Exception as exc:
+            store.finish(task['id'],data,'failed',f'信息读取中断（{type(exc).__name__}）；已保留取得的数据。')
+        finally:
+            with self.lock: self.busy=False
+
     def submit_downloads(self, manager, identity):
         with self.lock:
             if self.busy:
@@ -440,6 +494,11 @@ class BrowserReader:
                         if self.page.locator('[data-e2e="comment-item"]').locator(selectors['comment_text']).count():
                             break
                         self.page.wait_for_timeout(1000)
+                try:
+                    from .video_metadata import read_video_detail
+                    data['videos'][0].update(read_video_detail(self.page,video_id))
+                except PagePaused as exc:
+                    if exc.status!='pending_layout': raise
                 store.finish(task['id'], data, 'running', '正在读取首批或继续本批主评论，每页 100 条。')
                 if data['pagination'].get('active_reply'):
                     from .replies import collect_replies

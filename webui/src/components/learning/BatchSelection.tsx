@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { DeleteRecord, type DeleteTarget } from './DeleteRecord'
 import { useQueryClient } from '@tanstack/react-query'
 import { Download, FileDown, Loader2 } from 'lucide-react'
+import { MetadataReadButton } from './VideoInfo'
 
 export type SelectableRow = { target: DeleteTarget; label: string; disabled?: boolean }
 const keyOf = (target: DeleteTarget) => JSON.stringify([target.kind,target.source,target.id])
@@ -76,6 +77,7 @@ export function BatchToolbar({ selection, scopeLabel = '当前页', exportTaskId
     <label><input ref={checkbox} type="checkbox" checked={available.length > 0 && chosen.length === available.length} disabled={!available.length} onChange={selection.all} />全选{scopeLabel}</label>
     <span role="status">已选 {chosen.length} 条</span>
     <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => { selection.cancel(); setNotice(''); setError('') }}>取消选择</Button>
+    {!!exportTaskId && !!chosen.length && chosen.every(r=>r.target.kind==='videos'&&r.target.source==='live') && <MetadataReadButton taskId={exportTaskId} videoIds={chosen.map(r=>r.target.id)} disabled={!!busy}/>}
     {!!chosen.length && <div className="batch-actions"><Button size="sm" variant="outline" disabled={!!busy} onClick={() => void perform('csv')}><FileDown size={14} />导出 CSV</Button><Button size="sm" variant="outline" disabled={!!busy} onClick={() => void perform('json')}>导出 JSON</Button>{chosen.every(r => r.target.kind === 'videos') && <Button size="sm" variant="outline" disabled={!!busy || chosen.length > 100} onClick={() => void perform('video')}><Download size={14} />批量下载视频</Button>}<DeleteRecord disabled={!!busy} targets={chosen.map(r => r.target)} itemLabels={chosen.map(r => r.label)} label={`选中的 ${chosen.length} 条记录`} done={selection.clear} /></div>}
     </>}
     {!!busy && <span role="status" className="batch-message"><Loader2 size={14} className="animate-spin" />{busy === 'video' ? '正在创建下载任务…' : '正在生成所选数据文件…'}</span>}

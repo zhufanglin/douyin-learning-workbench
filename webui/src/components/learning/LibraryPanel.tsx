@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { VideoExplorer } from './VideoExplorer'
+import { VideoStats, useVideoSort } from './VideoInfo'
 import { CommentContent } from './ReplyThread'
 import { BatchToolbar, RowSelection, useBatchSelection } from './BatchSelection'
 import { DownloadPanel } from './DownloadPanel'
@@ -115,6 +116,7 @@ function GroupContent({ kind, group, showUser, scope }: { scope: string; kind: '
 
 
 function VideoBatchList({ videos, scope, open, taskId }: { taskId: string; videos: SavedVideo[]; scope: string; open: (video: SavedVideo) => void }) {
+  const {ordered,controls}=useVideoSort(videos)
   const selection = useBatchSelection(videos.map(v => ({ target: { kind: 'videos', source: v.source, id: v.id }, label: v.title || v.id })), scope)
-  return <><BatchToolbar selection={selection} scopeLabel="本组视频" exportTaskId={taskId} /><div className="history-video-grid">{videos.map((v,index) => <div key={identity(v)} className="video-with-delete">{selection.selecting && <div className="video-selection"><RowSelection selection={selection} row={{ target: { kind: 'videos', source: v.source, id: v.id }, label: v.title || v.id }} /></div>}<button className="history-video" onClick={() => open(v)}><span className="video-row-rank">第 {v.search_rank || index + 1} 条</span><span className="video-row-body"><strong className="record-title" title={v.title || v.id}>{v.title || v.id}</strong><small className="record-meta" title={v.author}>{v.author || '未提供作者'} → 查看评论</small></span></button></div>)}</div></>
+  return <>{controls}<BatchToolbar selection={selection} scopeLabel="本组视频" exportTaskId={taskId} /><div className="history-video-grid">{ordered.map((v) => <div key={identity(v)} className="video-with-delete">{selection.selecting && <div className="video-selection"><RowSelection selection={selection} row={{ target: { kind: 'videos', source: v.source, id: v.id }, label: v.title || v.id }} /></div>}<button className="history-video" onClick={() => open(v)}><span className="video-row-rank">第 {v.search_rank || videos.indexOf(v) + 1} 条</span><span className="video-row-body"><strong className="record-title" title={v.title || v.id}>{v.title || v.id}</strong><small className="record-meta" title={v.author}>{v.author || '未提供作者'} → 查看评论</small><VideoStats video={v}/></span></button></div>)}</div></>
 }

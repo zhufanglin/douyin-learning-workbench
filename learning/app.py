@@ -33,6 +33,11 @@ class SearchRequest(BaseModel):
         return value.strip()
 
 
+class VideoMetadataRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    video_ids: list[str] = Field(min_length=1, max_length=100)
+
+
 class ActionRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     source: Literal['demo', 'live', 'import']
@@ -298,6 +303,22 @@ def create_app(db_path=None):
         task = store.create_task(request.keyword, 'live')
         app.state.reader.submit(store, task, search_current=True, limit=request.limit)
         return store.get_task(task['id'])
+
+    @app.post('/api/learning/tasks/{task_id}/video-metadata')
+    def video_metadata(task_id: str, request: VideoMetadataRequest):
+        parent=store.result(task_id)
+        if parent['task']['source']!='live':
+            raise HTTPException(409, detail='仅能补充真实网页视频；导入数据请使用已有指标。')
+        import re
+        ids=list(dict.fromkeys(request.video_ids))
+        by_id={v['id']:v for v in parent['videos']}
+        if any(not re.fullmatch(r'[0-9]{5,30}',vid) or vid not in by_id for vid in ids):
+            raise HTTPException(400, detail='所选视频不在这个任务中，或视频编号无效。')
+        from .browser import BrowserReader
+        with app.state.reader_lock:
+            if app.state.reader is None: app.state.reader=BrowserReader(ROOT/'learning_data'/'browser')
+            try: return app.state.reader.submit_video_metadata(store,parent['task'],[by_id[vid] for vid in ids])
+            except ValueError as exc: raise HTTPException(409,detail=str(exc))
 
     @app.post('/api/learning/tasks/{task_id}/videos/{video_id}/comments')
     def selected_video(task_id: str, video_id: str):

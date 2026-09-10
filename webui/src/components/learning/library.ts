@@ -1,6 +1,7 @@
 import type { Comment } from './ReplyThread'
+import type { VideoInformation } from './VideoInfo'
 export type View = 'tasks' | 'videos' | 'users' | 'comments'
-export type SavedVideo = { id: string; title?: string; author?: string; source: string; search_rank?: number; task_ids?: string[] }
+export type SavedVideo = VideoInformation & { source: string; task_ids?: string[] }
 export type SavedUser = { id: string; nickname?: string; profile_url?: string; source: string }
 export type SavedComment = Comment & { video_id: string; source: string; task_ids?: string[]; create_time?: string | number; comment_rank?: number; reply_rank?: number }
 export type HistoryTask = { id: string; keyword: string; source: string; status: string; note: string; created_at: string; counts: Record<string, number>; videos: SavedVideo[] }

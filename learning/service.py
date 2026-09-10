@@ -49,7 +49,12 @@ def import_records(records):
             title = safe_text(row.get('title') or row.get('desc'))
             if not title:
                 raise ValueError('视频记录需要 title 或 desc；未提供 comment_id 的记录按视频处理。')
-            data['videos'].append(dict(id=video_id, title=title, url='', author=safe_text(row.get('nickname'))))
+            from .video_metadata import METRICS, observed_metric
+            metrics={}
+            for key in METRICS:
+                metric=observed_metric(row.get(key),'import')
+                if metric: metrics[key]=metric
+            data['videos'].append(dict(id=video_id, title=title, url='', author=safe_text(row.get('nickname')), metrics=metrics))
         if user_id:
             data['users'].append(dict(id=user_id, nickname=safe_text(row.get('nickname')) or '未提供昵称', profile_url=''))
     return data
